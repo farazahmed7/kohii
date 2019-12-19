@@ -25,7 +25,7 @@ import kohii.v1.core.Master
 import kohii.v1.core.PlayableCreator
 import kohii.v1.exoplayer.internal.PlayerViewPlayableCreator
 import kohii.v1.exoplayer.internal.PlayerViewProvider
-import kohii.v1.utils.SingletonHolder
+import kohii.v1.utils.Capsule
 
 class Kohii private constructor(
   master: Master,
@@ -34,7 +34,7 @@ class Kohii private constructor(
 
   private constructor(context: Context) : this(Master[context])
 
-  companion object : SingletonHolder<Kohii, Context>(::Kohii) {
+  companion object : Capsule<Kohii, Context>(::Kohii) {
 
     @JvmStatic // convenient static call for Java
     operator fun get(context: Context) = super.getInstance(context)

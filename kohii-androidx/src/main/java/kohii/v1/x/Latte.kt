@@ -24,7 +24,7 @@ import kohii.v1.core.Engine
 import kohii.v1.core.Manager
 import kohii.v1.core.Master
 import kohii.v1.core.PlayableCreator
-import kohii.v1.utils.SingletonHolder
+import kohii.v1.utils.Capsule
 
 @Experiment
 class Latte private constructor(
@@ -34,7 +34,7 @@ class Latte private constructor(
 
   private constructor(context: Context) : this(Master[context])
 
-  companion object : SingletonHolder<Latte, Context>(::Latte) {
+  companion object : Capsule<Latte, Context>(::Latte) {
 
     @JvmStatic
     operator fun get(context: Context) = super.getInstance(context)

@@ -24,7 +24,7 @@ import kohii.v1.core.Master
 import kohii.v1.core.Playback
 import kohii.v1.media.Media
 
-class PlayerViewPlayable(
+internal class PlayerViewPlayable(
   master: Master,
   media: Media,
   config: Config,

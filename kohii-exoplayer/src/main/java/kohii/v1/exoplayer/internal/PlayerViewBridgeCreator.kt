@@ -22,7 +22,7 @@ import kohii.v1.core.Bridge
 import kohii.v1.core.BridgeCreator
 import kohii.v1.media.Media
 
-class PlayerViewBridgeCreator(
+internal class PlayerViewBridgeCreator(
   private val playerProvider: ExoPlayerProvider,
   private val mediaSourceFactoryProvider: MediaSourceFactoryProvider
 ) : BridgeCreator<PlayerView> {

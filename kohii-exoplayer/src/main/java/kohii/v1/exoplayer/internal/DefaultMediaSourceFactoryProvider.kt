@@ -19,13 +19,13 @@ package kohii.v1.exoplayer.internal
 import android.net.Uri
 import com.google.android.exoplayer2.C
 import com.google.android.exoplayer2.source.MediaSource
+import com.google.android.exoplayer2.source.MediaSourceFactory
 import com.google.android.exoplayer2.source.ProgressiveMediaSource
-import com.google.android.exoplayer2.source.ads.AdsMediaSource.MediaSourceFactory
 import com.google.android.exoplayer2.source.dash.DashMediaSource
 import com.google.android.exoplayer2.source.hls.HlsMediaSource
 import com.google.android.exoplayer2.source.smoothstreaming.SsMediaSource
 import com.google.android.exoplayer2.upstream.DataSource
-import com.google.android.exoplayer2.upstream.FileDataSourceFactory
+import com.google.android.exoplayer2.upstream.FileDataSource
 import com.google.android.exoplayer2.upstream.cache.Cache
 import com.google.android.exoplayer2.upstream.cache.CacheDataSource
 import com.google.android.exoplayer2.upstream.cache.CacheDataSourceFactory
@@ -36,29 +36,25 @@ import kohii.v1.media.Media
 /**
  * @author eneim (2018/10/27).
  */
-class DefaultMediaSourceFactoryProvider private constructor(
+internal class DefaultMediaSourceFactoryProvider private constructor(
   upstreamFactory: DataSource.Factory,
   mediaCache: Cache? = null,
-  private val offlineSourceHelper: OfflineSourceHelper? = null
+  private val offlineSourceHelper: OfflineSourceHelper? = null,
+  private val drmSessionManagerProvider: DrmSessionManagerProvider
 ) : MediaSourceFactoryProvider {
 
   constructor(
     upstreamFactory: DataSource.Factory,
-    mediaCache: Cache? = null
-  ) : this(upstreamFactory, mediaCache, null)
-
-  @Suppress("unused") //
-  constructor(
-    upstreamFactory: DataSource.Factory,
-    offlineSourceHelper: OfflineSourceHelper
-  ) : this(upstreamFactory, offlineSourceHelper.downloadCache, offlineSourceHelper)
+    mediaCache: Cache? = null,
+    drmSessionManagerProvider: DrmSessionManagerProvider
+  ) : this(upstreamFactory, mediaCache, null, drmSessionManagerProvider)
 
   private val dataSourceFactory: DataSource.Factory =
     if (mediaCache != null) {
       CacheDataSourceFactory(
           mediaCache,
           upstreamFactory,
-          FileDataSourceFactory(), null,
+          FileDataSource.Factory(), null,
           CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR, null
       )
     } else {
@@ -82,11 +78,17 @@ class DefaultMediaSourceFactoryProvider private constructor(
 
     if (offlineSourceHelper != null) return offlineSourceHelper.getMediaSourceFactory(media.uri)
 
+    val drmSessionManager = drmSessionManagerProvider.provideDrmSessionManager(media)
+
     return when (type) {
       C.TYPE_DASH -> DashMediaSource.Factory(dataSourceFactory)
+          .setDrmSessionManager(drmSessionManager)
       C.TYPE_SS -> SsMediaSource.Factory(dataSourceFactory)
+          .setDrmSessionManager(drmSessionManager)
       C.TYPE_HLS -> HlsMediaSource.Factory(dataSourceFactory)
+          .setDrmSessionManager(drmSessionManager)
       C.TYPE_OTHER -> ProgressiveMediaSource.Factory(dataSourceFactory)
+          .setDrmSessionManager(drmSessionManager)
       else -> {
         throw IllegalStateException("Unsupported type: $type")
       }

@@ -17,109 +17,59 @@
 package kohii.v1.exoplayer.internal
 
 import android.content.Context
-import android.text.TextUtils
+import android.media.MediaDrm
 import android.widget.Toast
 import android.widget.Toast.LENGTH_SHORT
 import com.google.android.exoplayer2.drm.DefaultDrmSessionManager
+import com.google.android.exoplayer2.drm.DrmSession.DrmSessionException
 import com.google.android.exoplayer2.drm.DrmSessionManager
-import com.google.android.exoplayer2.drm.ExoMediaDrm
-import com.google.android.exoplayer2.drm.FrameworkMediaCrypto
+import com.google.android.exoplayer2.drm.ExoMediaCrypto
 import com.google.android.exoplayer2.drm.FrameworkMediaDrm
 import com.google.android.exoplayer2.drm.HttpMediaDrmCallback
-import com.google.android.exoplayer2.drm.UnsupportedDrmException
-import com.google.android.exoplayer2.drm.UnsupportedDrmException.REASON_UNSUPPORTED_SCHEME
 import com.google.android.exoplayer2.upstream.HttpDataSource
 import com.google.android.exoplayer2.util.Util.getDrmUuid
 import kohii.v1.exoplayer.R
 import kohii.v1.media.Media
-import java.util.UUID
-import kotlin.LazyThreadSafetyMode.NONE
 
 /**
  * @author eneim (2018/10/27).
  */
-class DefaultDrmSessionManagerProvider(
+internal class DefaultDrmSessionManagerProvider(
   private val context: Context,
   private val httpDataSourceFactory: HttpDataSource.Factory
 ) : DrmSessionManagerProvider {
 
-  private val cache = lazy(NONE) { HashMap<DrmSessionManager<*>, ExoMediaDrm<*>>() }
-
-  override fun provideDrmSessionManager(media: Media): DrmSessionManager<FrameworkMediaCrypto>? {
-    val mediaDrm = media.mediaDrm ?: return null
-    var drmSessionManager: DrmSessionManager<FrameworkMediaCrypto>? = null
+  override fun provideDrmSessionManager(media: Media): DrmSessionManager<out ExoMediaCrypto> {
+    val mediaDrm = media.mediaDrm ?: return DrmSessionManager.getDummyDrmSessionManager()
+    var drmSessionManager: DrmSessionManager<out ExoMediaCrypto>? = null
     var errorStringId = R.string.error_drm_unknown
-    var subString: String? = null
 
     val drmSchemeUuid = getDrmUuid(mediaDrm.type)
-    if (drmSchemeUuid == null) {
+    if (drmSchemeUuid == null || MediaDrm.isCryptoSchemeSupported(drmSchemeUuid)) {
       errorStringId = R.string.error_drm_unsupported_scheme
     } else {
-      try {
-        drmSessionManager = buildDrmSessionManagerV18(
-            drmSchemeUuid, mediaDrm.licenseUrl,
-            mediaDrm.keyRequestPropertiesArray, mediaDrm.multiSession, httpDataSourceFactory
-        )
-      } catch (e: UnsupportedDrmException) {
-        e.printStackTrace()
-        errorStringId =
-          if (e.reason == REASON_UNSUPPORTED_SCHEME)
-            R.string.error_drm_unsupported_scheme
-          else
-            R.string.error_drm_unknown
-        if (e.reason == REASON_UNSUPPORTED_SCHEME) {
-          subString = mediaDrm.type
+      val drmCallback =
+        HttpMediaDrmCallback(requireNotNull(mediaDrm.licenseUrl), httpDataSourceFactory)
+      mediaDrm.keyRequestPropertiesArray?.let {
+        for (i in 0 until it.size - 1 step 2) {
+          drmCallback.setKeyRequestProperty(it[i], it[i + 1])
         }
       }
+
+      drmSessionManager = DefaultDrmSessionManager.Builder()
+          .setUuidAndExoMediaDrmProvider(drmSchemeUuid, FrameworkMediaDrm.DEFAULT_PROVIDER)
+          .setKeyRequestParameters(emptyMap())
+          .setMultiSession(mediaDrm.multiSession)
+          .build(drmCallback)
     }
 
     if (drmSessionManager == null) {
-      val error =
-        if (TextUtils.isEmpty(subString)) context.getString(errorStringId)
-        else "${context.getString(errorStringId)}: $subString"
+      val error = context.getString(errorStringId)
       Toast.makeText(context, error, LENGTH_SHORT)
           .show()
+      throw DrmSessionException(RuntimeException(error))
     }
 
     return drmSessionManager
-  }
-
-  @Throws(UnsupportedDrmException::class)
-  private fun buildDrmSessionManagerV18(
-    uuid: UUID,
-    licenseUrl: String?,
-    keyRequestProperties: Array<String>?,
-    multiSession: Boolean,
-    httpDataSourceFactory: HttpDataSource.Factory
-  ): DrmSessionManager<FrameworkMediaCrypto> {
-    val drmCallback = HttpMediaDrmCallback(licenseUrl, httpDataSourceFactory)
-    if (keyRequestProperties != null) {
-      var i = 0
-      while (i < keyRequestProperties.size - 1) {
-        drmCallback.setKeyRequestProperty(keyRequestProperties[i], keyRequestProperties[i + 1])
-        i += 2
-      }
-    }
-    val mediaDrm = FrameworkMediaDrm.newInstance(uuid)
-    return DefaultDrmSessionManager(
-        uuid,
-        mediaDrm,
-        drmCallback,
-        null,
-        multiSession
-    ).also { cache.value[it] = mediaDrm }
-  }
-
-  override fun releaseDrmSessionManager(sessionManager: DrmSessionManager<*>?) {
-    if (sessionManager != null && cache.isInitialized()) {
-      cache.value.remove(sessionManager)
-          ?.release()
-    }
-  }
-
-  override fun cleanUp() {
-    if (cache.isInitialized()) {
-      cache.value.forEach { (_, u) -> u.release() }
-    }
   }
 }

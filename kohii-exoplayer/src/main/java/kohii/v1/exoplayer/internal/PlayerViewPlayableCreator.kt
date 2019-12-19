@@ -53,8 +53,7 @@ internal class PlayerViewPlayableCreator(
       DefaultDrmSessionManagerProvider(this.app, httpDataSource)
     val playerProvider = DefaultExoPlayerProvider(
         this.app,
-        DefaultBandwidthMeterFactory(),
-        drmSessionManagerProvider
+        DefaultBandwidthMeterFactory()
     )
 
     // MediaSourceFactoryProvider
@@ -66,15 +65,12 @@ internal class PlayerViewPlayableCreator(
     val mediaCache: Cache =
       SimpleCache(
           contentDir,
-          LeastRecentlyUsedCacheEvictor(
-              CACHE_SIZE
-          ),
+          LeastRecentlyUsedCacheEvictor(CACHE_SIZE),
           ExoDatabaseProvider(this.app)
       )
-    val upstreamFactory =
-      DefaultDataSourceFactory(this.app, httpDataSource)
+    val upstreamFactory = DefaultDataSourceFactory(this.app, httpDataSource)
     val mediaSourceFactoryProvider =
-      DefaultMediaSourceFactoryProvider(upstreamFactory, mediaCache)
+      DefaultMediaSourceFactoryProvider(upstreamFactory, mediaCache, drmSessionManagerProvider)
     PlayerViewBridgeCreator(playerProvider, mediaSourceFactoryProvider)
   }
 

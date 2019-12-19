@@ -20,7 +20,7 @@ import android.content.Context
 import com.google.android.exoplayer2.upstream.BandwidthMeter
 import com.google.android.exoplayer2.upstream.DefaultBandwidthMeter
 
-class DefaultBandwidthMeterFactory : BandwidthMeterFactory {
+internal class DefaultBandwidthMeterFactory : BandwidthMeterFactory {
 
   override fun createBandwidthMeter(context: Context): BandwidthMeter =
     DefaultBandwidthMeter.Builder(context).build()

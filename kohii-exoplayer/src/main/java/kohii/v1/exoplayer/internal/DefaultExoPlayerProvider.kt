@@ -21,12 +21,10 @@ import androidx.core.util.Pools
 import com.google.android.exoplayer2.DefaultLoadControl
 import com.google.android.exoplayer2.DefaultRenderersFactory
 import com.google.android.exoplayer2.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
-import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.LoadControl
 import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.RenderersFactory
 import com.google.android.exoplayer2.SimpleExoPlayer
-import com.google.android.exoplayer2.drm.DrmSessionManager
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector
 import com.google.android.exoplayer2.util.Util
 import kohii.v1.media.Media
@@ -39,11 +37,10 @@ import kotlin.math.max
 /**
  * @author eneim (2018/10/27).
  */
-class DefaultExoPlayerProvider(
-  private val context: Context,
+internal class DefaultExoPlayerProvider(
+  context: Context,
   private val bandwidthMeterFactory: BandwidthMeterFactory = DefaultBandwidthMeterFactory(),
-  private val drmSessionManagerProvider: DrmSessionManagerProvider? = null,
-  private val loadControl: LoadControl = DefaultLoadControl(),
+  private val loadControl: LoadControl = DefaultLoadControl.Builder().createDefaultLoadControl(),
   private val renderersFactory: RenderersFactory = DefaultRenderersFactory(
       context.applicationContext
   ).setExtensionRendererMode(EXTENSION_RENDERER_MODE_OFF)
@@ -55,11 +52,8 @@ class DefaultExoPlayerProvider(
     internal val MAX_POOL_SIZE = max(Util.SDK_INT / 6, Runtime.getRuntime().availableProcessors())
   }
 
-  // Cache...
-  private val plainPlayerPool = Pools.SimplePool<Player>(
-      MAX_POOL_SIZE
-  )
-  private val drmPlayerCache = HashMap<ExoPlayer, DrmSessionManager<*>>()
+  private val context = context.applicationContext
+  private val playerPool = Pools.SimplePool<Player>(MAX_POOL_SIZE)
 
   init {
     // Adapt from ExoPlayer demo app.
@@ -71,33 +65,19 @@ class DefaultExoPlayerProvider(
   }
 
   override fun acquirePlayer(media: Media): Player {
-    val drmSessionManager = drmSessionManagerProvider?.provideDrmSessionManager(media)
-    val result = if (drmSessionManager == null) {
-      plainPlayerPool.acquire() ?: KohiiExoPlayer(
-          context,
-          renderersFactory,
-          DefaultTrackSelector(),
-          loadControl,
-          bandwidthMeterFactory.createBandwidthMeter(this.context),
-          null,
-          Util.getLooper()
-      )
-    } else {
-      KohiiExoPlayer(
-          context,
-          renderersFactory,
-          DefaultTrackSelector(),
-          loadControl,
-          bandwidthMeterFactory.createBandwidthMeter(this.context),
-          drmSessionManager,
-          Util.getLooper()
-      )
-          .also {
-            drmPlayerCache[it] = drmSessionManager
-          }
-    }
+    val result = playerPool.acquire() ?: DefaultExoPlayer(
+        context,
+        renderersFactory,
+        DefaultTrackSelector(context),
+        loadControl,
+        bandwidthMeterFactory.createBandwidthMeter(context),
+        Util.getLooper()
+    )
 
-    (result as? SimpleExoPlayer)?.also { it.setAudioAttributes(it.audioAttributes, true) }
+    if (result is SimpleExoPlayer) {
+      // If not mute --> need to handle audio focus
+      result.setAudioAttributes(result.audioAttributes, result.volume > 0F)
+    }
     return result
   }
 
@@ -105,22 +85,12 @@ class DefaultExoPlayerProvider(
     media: Media,
     player: Player
   ) {
-    // player.stop(true) // client must stop/do proper cleanup by itself.
-    if (drmPlayerCache.containsKey(player)) {
+    if (!playerPool.release(player)) {
       player.release()
-      drmSessionManagerProvider?.releaseDrmSessionManager(drmPlayerCache.remove(player))
-    } else {
-      if (!plainPlayerPool.release(player)) {
-        // No more space in pool --> this Player has no where to go --> release it.
-        player.release()
-      }
     }
   }
 
   override fun cleanUp() {
-    for ((key) in drmPlayerCache) key.release()
-    drmPlayerCache.clear()
-    drmSessionManagerProvider?.cleanUp()
-    plainPlayerPool.onEachAcquired { it.release() }
+    playerPool.onEachAcquired { it.release() }
   }
 }

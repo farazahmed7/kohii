@@ -18,8 +18,8 @@ package kohii.v1.exoplayer.internal
 
 import android.net.Uri
 import com.google.android.exoplayer2.offline.DownloadRequest
+import com.google.android.exoplayer2.source.MediaSourceFactory
 import com.google.android.exoplayer2.source.ProgressiveMediaSource
-import com.google.android.exoplayer2.source.ads.AdsMediaSource
 import com.google.android.exoplayer2.source.dash.DashMediaSource
 import com.google.android.exoplayer2.source.hls.HlsMediaSource
 import com.google.android.exoplayer2.source.smoothstreaming.SsMediaSource
@@ -35,12 +35,14 @@ interface OfflineSourceHelper {
 
   fun getDownloadRequest(uri: Uri): DownloadRequest
 
-  fun getMediaSourceFactory(uri: Uri): AdsMediaSource.MediaSourceFactory {
+  fun getMediaSourceFactory(uri: Uri): MediaSourceFactory {
     val downloadRequest = this.getDownloadRequest(uri)
-    if (downloadRequest.uri != uri) throw IllegalArgumentException(
-        "Download request is for different Uri. Expected $uri, found ${downloadRequest.uri}"
-    )
+    check(downloadRequest.uri == uri) {
+      "Download request is for different Uri. Expected $uri, found ${downloadRequest.uri}"
+    }
 
+    // Mimic DownloadHelper.createMediaSource(downloadRequest, dataSourceFactory)
+    // Without using reflection.
     return when (downloadRequest.type) {
       DownloadRequest.TYPE_DASH ->
         DashMediaSource.Factory(dataSourceFactory).setStreamKeys(downloadRequest.streamKeys)
@@ -49,7 +51,7 @@ interface OfflineSourceHelper {
       DownloadRequest.TYPE_HLS ->
         HlsMediaSource.Factory(dataSourceFactory).setStreamKeys(downloadRequest.streamKeys)
       DownloadRequest.TYPE_PROGRESSIVE ->
-        ProgressiveMediaSource.Factory(dataSourceFactory)
+        ProgressiveMediaSource.Factory(dataSourceFactory).setStreamKeys(downloadRequest.streamKeys)
       else -> {
         throw IllegalStateException("Unsupported type: ${downloadRequest.type}")
       }

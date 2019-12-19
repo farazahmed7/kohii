@@ -97,7 +97,7 @@ internal class PlayerViewBridge(
         if (from == to) return@observable
         if (to != VideoSize.NONE) {
           val player = this.player
-          if (player is KohiiExoPlayer) {
+          if (player is DefaultExoPlayer) {
             val current = player.trackSelector.parameters
             val next = current.buildUpon()
                 .setMaxVideoSize(to.maxWidth, to.maxHeight)
@@ -280,7 +280,7 @@ internal class PlayerViewBridge(
     if (!sourcePrepared) {
       ensurePlayer()
       (player as? ExoPlayer)?.also {
-        it.prepare(mediaSource, playbackInfo.resumeWindow == INDEX_UNSET, false)
+        it.prepare(requireNotNull(mediaSource), playbackInfo.resumeWindow == INDEX_UNSET, false)
         sourcePrepared = true
       }
     }
@@ -291,7 +291,7 @@ internal class PlayerViewBridge(
       sourcePrepared = false
       listenerApplied = false
       val player = playerProvider.acquirePlayer(this.media)
-      if (player is KohiiExoPlayer) {
+      if (player is DefaultExoPlayer) {
         val next = player.trackSelector.parameters.buildUpon()
             .setMaxVideoSize(videoSize.maxWidth, videoSize.maxHeight)
             .build()
@@ -307,7 +307,7 @@ internal class PlayerViewBridge(
         listenerApplied = true
       }
 
-      it.playbackParameters = _playbackParams
+      it.setPlaybackParameters(_playbackParams)
       val hasResumePosition = _playbackInfo.resumeWindow != INDEX_UNSET
       if (hasResumePosition) {
         it.seekTo(_playbackInfo.resumeWindow, _playbackInfo.resumePosition)
@@ -333,14 +333,14 @@ internal class PlayerViewBridge(
 
   // ErrorMessageProvider<ExoPlaybackException> ⬇︎
 
-  override fun getErrorMessage(e: ExoPlaybackException?): Pair<Int, String> {
-    Log.e("Kohii::Bridge", "Error: ${e?.cause}")
+  override fun getErrorMessage(e: ExoPlaybackException): Pair<Int, String> {
+    Log.e("Kohii::Bridge", "Error: ${e.cause}")
     var errorString = context.getString(R.string.error_generic)
-    if (e?.type == ExoPlaybackException.TYPE_RENDERER) {
+    if (e.type == ExoPlaybackException.TYPE_RENDERER) {
       val exception = e.rendererException
       if (exception is DecoderInitializationException) {
         // Special case for decoder initialization failures.
-        errorString = if (exception.decoderName == null) {
+        errorString = if (exception.codecInfo == null) {
           when {
             exception.cause is MediaCodecUtil.DecoderQueryException ->
               context.getString(R.string.error_querying_decoders)
@@ -349,7 +349,7 @@ internal class PlayerViewBridge(
             else -> context.getString(R.string.error_no_decoder, exception.mimeType)
           }
         } else {
-          context.getString(R.string.error_instantiating_decoder, exception.decoderName)
+          context.getString(R.string.error_instantiating_decoder, exception.codecInfo!!.name)
         }
       }
     }
@@ -359,15 +359,15 @@ internal class PlayerViewBridge(
 
   // DefaultEventListener ⬇︎
 
-  override fun onPlayerError(error: ExoPlaybackException?) {
-    Log.e("Kohii::Bridge", "Error: ${error?.cause}")
+  override fun onPlayerError(error: ExoPlaybackException) {
+    Log.e("Kohii::Bridge", "Error: ${error.cause}")
     if (renderer == null) {
       var errorString: String? = null
-      if (error?.type == ExoPlaybackException.TYPE_RENDERER) {
+      if (error.type == ExoPlaybackException.TYPE_RENDERER) {
         val exception = error.rendererException
         if (exception is DecoderInitializationException) {
           // Special case for decoder initialization failures.
-          errorString = if (exception.decoderName == null) {
+          errorString = if (exception.codecInfo == null) {
             when {
               exception.cause is MediaCodecUtil.DecoderQueryException ->
                 context.getString(R.string.error_querying_decoders)
@@ -376,7 +376,7 @@ internal class PlayerViewBridge(
               else -> context.getString(R.string.error_no_decoder, exception.mimeType)
             }
           } else {
-            context.getString(R.string.error_instantiating_decoder, exception.decoderName)
+            context.getString(R.string.error_instantiating_decoder, exception.codecInfo!!.name)
           }
         }
       }
@@ -390,7 +390,7 @@ internal class PlayerViewBridge(
     } else {
       updatePlaybackInfo()
     }
-    if (error != null) this.errorListeners.onError(error)
+    this.errorListeners.onError(error)
   }
 
   override fun onPositionDiscontinuity(reason: Int) {
@@ -404,12 +404,12 @@ internal class PlayerViewBridge(
   }
 
   override fun onTracksChanged(
-    trackGroups: TrackGroupArray?,
-    trackSelections: TrackSelectionArray?
+    trackGroups: TrackGroupArray,
+    trackSelections: TrackSelectionArray
   ) {
     if (trackGroups == lastSeenTrackGroupArray) return
     lastSeenTrackGroupArray = trackGroups
-    val player = this.player as? KohiiExoPlayer ?: return
+    val player = this.player as? DefaultExoPlayer ?: return
     val trackInfo = player.trackSelector.currentMappedTrackInfo
     if (trackInfo != null) {
       if (trackInfo.getTypeSupport(C.TRACK_TYPE_VIDEO) == RENDERER_SUPPORT_UNSUPPORTED_TRACKS) {
